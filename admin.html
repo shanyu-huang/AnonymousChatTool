@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .highlight { animation: highlight 1.5s ease; }
+    @keyframes highlight { 0%,100% { background: transparent; } 30% { background: #dcfce7; } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- ==================== SCREEN: LOGIN ==================== -->
+  <div id="screen-login" class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+      <div class="text-center mb-6">
+        <div class="text-4xl mb-2">🔒</div>
+        <h1 class="text-2xl font-bold text-gray-800">Consultant Dashboard</h1>
+        <p class="text-sm text-gray-400 mt-1">研究者管理介面</p>
+      </div>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Admin Key</label>
+      <input id="login-key" type="password" placeholder="Enter admin key"
+        class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-1 focus:outline-none focus:ring-2 focus:ring-green-400"
+        onkeydown="if(event.key==='Enter') handleLogin()">
+
+      <p id="login-error" class="text-red-500 text-xs mb-3 min-h-[16px]"></p>
+
+      <button id="login-btn" onclick="handleLogin()"
+        class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg transition">
+        Sign In
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== SCREEN: PROJECT LIST ==================== -->
+  <div id="screen-projects" class="hidden min-h-screen">
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+      <div>
+        <h1 class="text-lg font-bold text-gray-800">Consultant Dashboard</h1>
+        <p class="text-xs text-gray-400">研究者管理介面</p>
+      </div>
+      <button onclick="handleSignOut()" class="text-sm text-gray-400 hover:text-gray-600 transition">Sign Out</button>
+    </div>
+
+    <div class="max-w-2xl mx-auto px-4 py-6">
+      <!-- Section header -->
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold text-gray-700">Projects</h2>
+        <button onclick="openCreateModal()"
+          class="bg-green-500 hover:bg-green-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition flex items-center gap-1">
+          <span>＋</span> New Project
+        </button>
+      </div>
+
+      <!-- Project list -->
+      <div id="project-list" class="space-y-2">
+        <div class="text-gray-400 text-sm text-center py-8">
+          <span class="spinner border-gray-300"></span>
+          <span class="ml-2">Loading projects...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: CREATE PROJECT ==================== -->
+  <div id="modal-create" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 fade-in">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">Create New Project</h2>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Project ID <span class="text-red-400">*</span></label>
+      <input id="create-pid" type="text" placeholder="e.g. study-2026"
+        class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-1 focus:outline-none focus:ring-2 focus:ring-green-400 font-mono">
+      <p class="text-xs text-gray-400 mb-3">Letters, numbers, hyphens, underscores only (max 64 chars)</p>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Display Name <span class="text-gray-400 font-normal">(optional)</span></label>
+      <input id="create-name" type="text" placeholder="e.g. User Research 2026"
+        class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-1 focus:outline-none focus:ring-2 focus:ring-green-400">
+
+      <p id="create-error" class="text-red-500 text-xs mb-3 min-h-[16px]"></p>
+
+      <div class="flex gap-2">
+        <button onclick="closeCreateModal()"
+          class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 rounded-lg transition">
+          Cancel
+        </button>
+        <button id="create-btn" onclick="handleCreateProject()"
+          class="flex-1 bg-green-500 hover:bg-green-600 text-white font-medium py-2 rounded-lg transition">
+          Create →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCREEN: SESSION LIST ==================== -->
+  <div id="screen-sessions" class="hidden min-h-screen">
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+      <div class="flex items-center gap-3">
+        <button onclick="showProjects()"
+          class="text-green-600 hover:text-green-700 text-sm font-medium transition flex items-center gap-1">
+          ← Back
+        </button>
+        <div>
+          <h1 id="session-project-name" class="text-base font-bold text-gray-800"></h1>
+          <p id="session-project-pid" class="text-xs text-gray-400 font-mono"></p>
+        </div>
+      </div>
+      <button onclick="handleSignOut()" class="text-sm text-gray-400 hover:text-gray-600 transition">Sign Out</button>
+    </div>
+
+    <div class="max-w-2xl mx-auto px-4 py-6">
+      <!-- Generate link section -->
+      <div class="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-semibold text-gray-700">New Participant Link</h3>
+          <button id="generate-btn" onclick="handleGenerateLink()"
+            class="bg-green-500 hover:bg-green-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition">
+            ＋ Generate Link
+          </button>
+        </div>
+
+        <!-- Generated link panel (hidden by default) -->
+        <div id="link-panel" class="hidden">
+          <div class="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
+            <p class="text-xs font-medium text-green-700 mb-1">✅ Link ready — share with participant</p>
+            <p id="link-sid" class="text-xs text-gray-500 font-mono mb-2"></p>
+            <div class="flex gap-2 items-center">
+              <input id="link-url" type="text" readonly
+                class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 font-mono focus:outline-none focus:ring-1 focus:ring-green-400 cursor-text select-all">
+              <button id="copy-btn" onclick="handleCopyLink()"
+                class="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded transition whitespace-nowrap flex-shrink-0">
+                📋 Copy
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">Session is created when the participant first signs in.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sessions section -->
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold text-gray-700">Sessions</h2>
+        <button onclick="loadSessions()" class="text-xs text-green-600 hover:text-green-700 transition">↻ Refresh</button>
+      </div>
+
+      <div id="session-list" class="space-y-2">
+        <div class="text-gray-400 text-sm text-center py-8">
+          <span class="spinner border-gray-300"></span>
+          <span class="ml-2">Loading sessions...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== ALERT OVERLAY ==================== -->
+  <div id="alert-overlay" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
+      <p id="alert-message" class="text-gray-800 text-sm leading-relaxed"></p>
+      <button onclick="closeAlert()"
+        class="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 rounded-lg transition">OK</button>
+    </div>
+  </div>
+
+<script>
+// ==================== STATE ====================
+const ADMIN_KEY_STORAGE = 'consultant_auth';
+
+const adminState = {
+  key: null,
+  currentPid: null,
+  currentName: null,
+  projects: [],
+};
+
+// ==================== INIT ====================
+document.addEventListener('DOMContentLoaded', function() {
+  var stored = localStorage.getItem(ADMIN_KEY_STORAGE);
+  if (stored) {
+    setBtnLoading('login-btn', true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        setBtnLoading('login-btn', false);
+        if (result.success) {
+          adminState.key = stored;
+          showProjects();
+        } else {
+          localStorage.removeItem(ADMIN_KEY_STORAGE);
+          showScreen('screen-login');
+        }
+      })
+      .withFailureHandler(function() {
+        setBtnLoading('login-btn', false);
+        showScreen('screen-login');
+      })
+      .adminAuthenticate(stored);
+  } else {
+    showScreen('screen-login');
+  }
+});
+
+// ==================== AUTH ====================
+function handleLogin() {
+  var key = document.getElementById('login-key').value.trim();
+  if (!key) { setError('login-error', 'Please enter the admin key.'); return; }
+  setError('login-error', '');
+  setBtnLoading('login-btn', true);
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      setBtnLoading('login-btn', false);
+      if (result.success) {
+        adminState.key = key;
+        localStorage.setItem(ADMIN_KEY_STORAGE, key);
+        showProjects();
+      } else {
+        setError('login-error', result.error || 'Invalid admin key.');
+      }
+    })
+    .withFailureHandler(function() {
+      setBtnLoading('login-btn', false);
+      setError('login-error', 'Connection error. Please try again.');
+    })
+    .adminAuthenticate(key);
+}
+
+function handleSignOut() {
+  localStorage.removeItem(ADMIN_KEY_STORAGE);
+  adminState.key = null;
+  adminState.currentPid = null;
+  document.getElementById('login-key').value = '';
+  setError('login-error', '');
+  showScreen('screen-login');
+}
+
+// ==================== PROJECTS ====================
+function showProjects() {
+  showScreen('screen-projects');
+  loadProjects();
+}
+
+function loadProjects() {
+  setProjectListLoading(true);
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        adminState.projects = result.projects;
+        renderProjectList(result.projects);
+      } else {
+        renderProjectError(result.error);
+      }
+    })
+    .withFailureHandler(function() {
+      renderProjectError('Connection error. Please refresh.');
+    })
+    .adminListProjects(adminState.key);
+}
+
+function renderProjectList(projects) {
+  var container = document.getElementById('project-list');
+  if (!projects || projects.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-sm text-center py-8">No projects yet. Create one above.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  projects.forEach(function(p) {
+    var isActive = p.status === 'Active';
+    var row = document.createElement('div');
+    row.id = 'project-row-' + p.pid;
+    row.className = 'bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between hover:border-green-300 transition fade-in';
+    row.innerHTML =
+      '<div class="flex items-center gap-3 min-w-0">' +
+        '<span class="text-lg flex-shrink-0">' + (isActive ? '🟢' : '⚪') + '</span>' +
+        '<div class="min-w-0">' +
+          '<p class="font-medium text-gray-800 truncate">' + escapeHtml(p.name) + '</p>' +
+          '<p class="text-xs text-gray-400 font-mono truncate">' + escapeHtml(p.pid) + (isActive ? '' : ' · Inactive') + '</p>' +
+        '</div>' +
+      '</div>' +
+      '<button onclick="showSessions(\'' + escapeAttr(p.pid) + '\', \'' + escapeAttr(p.name) + '\')" ' +
+        'class="ml-3 flex-shrink-0 text-sm text-green-600 hover:text-green-700 font-medium transition">View →</button>';
+    container.appendChild(row);
+  });
+}
+
+function renderProjectError(msg) {
+  document.getElementById('project-list').innerHTML =
+    '<div class="text-red-400 text-sm text-center py-8">' + escapeHtml(msg) + '</div>';
+}
+
+function setProjectListLoading(loading) {
+  if (loading) {
+    document.getElementById('project-list').innerHTML =
+      '<div class="text-gray-400 text-sm text-center py-8"><span class="spinner border-gray-300"></span><span class="ml-2">Loading projects...</span></div>';
+  }
+}
+
+// ==================== CREATE PROJECT MODAL ====================
+function openCreateModal() {
+  document.getElementById('create-pid').value = '';
+  document.getElementById('create-name').value = '';
+  setError('create-error', '');
+  document.getElementById('modal-create').classList.remove('hidden');
+  setTimeout(function() { document.getElementById('create-pid').focus(); }, 50);
+}
+
+function closeCreateModal() {
+  document.getElementById('modal-create').classList.add('hidden');
+}
+
+function handleCreateProject() {
+  var pid = document.getElementById('create-pid').value.trim();
+  var name = document.getElementById('create-name').value.trim();
+
+  // Client-side validation
+  if (!pid) { setError('create-error', 'Project ID is required.'); return; }
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(pid)) {
+    setError('create-error', 'Use only letters, numbers, hyphens, underscores (max 64 chars).');
+    return;
+  }
+  setError('create-error', '');
+  setBtnLoading('create-btn', true);
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      setBtnLoading('create-btn', false);
+      if (result.success) {
+        closeCreateModal();
+        loadProjects();
+        // Highlight the new row after list refreshes
+        setTimeout(function() {
+          var row = document.getElementById('project-row-' + pid);
+          if (row) row.classList.add('highlight');
+        }, 1200);
+      } else {
+        setError('create-error', result.error || 'Failed to create project.');
+      }
+    })
+    .withFailureHandler(function() {
+      setBtnLoading('create-btn', false);
+      setError('create-error', 'Connection error. Please try again.');
+    })
+    .adminCreateProject(adminState.key, pid, name);
+}
+
+// ==================== SESSIONS ====================
+function showSessions(pid, name) {
+  adminState.currentPid = pid;
+  adminState.currentName = name;
+  document.getElementById('session-project-name').textContent = name;
+  document.getElementById('session-project-pid').textContent = pid;
+  document.getElementById('link-panel').classList.add('hidden');
+  showScreen('screen-sessions');
+  loadSessions();
+}
+
+function loadSessions() {
+  setSessionListLoading(true);
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        renderSessionList(result.sessions);
+      } else {
+        renderSessionError(result.error);
+      }
+    })
+    .withFailureHandler(function() {
+      renderSessionError('Connection error. Please refresh.');
+    })
+    .adminListSessions(adminState.key, adminState.currentPid);
+}
+
+function renderSessionList(sessions) {
+  var container = document.getElementById('session-list');
+  if (!sessions || sessions.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-sm text-center py-8">No sessions yet.<br>Generate a link above to invite participants.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  sessions.forEach(function(s) {
+    var shortSid = s.sid.length > 8 ? s.sid.substring(0, 8) + '…' : s.sid;
+    var lastActive = s.lastUpdate ? formatDateTime(s.lastUpdate) : '—';
+    var row = document.createElement('div');
+    row.className = 'bg-white border border-gray-200 rounded-xl px-4 py-3 fade-in';
+    row.innerHTML =
+      '<div class="flex items-center justify-between">' +
+        '<p class="font-mono text-sm text-gray-700 truncate">' + escapeHtml(shortSid) + '</p>' +
+        '<span class="text-xs text-gray-400 flex-shrink-0 ml-2">Last active: ' + escapeHtml(lastActive) + '</span>' +
+      '</div>';
+    container.appendChild(row);
+  });
+}
+
+function renderSessionError(msg) {
+  document.getElementById('session-list').innerHTML =
+    '<div class="text-red-400 text-sm text-center py-8">' + escapeHtml(msg) + '</div>';
+}
+
+function setSessionListLoading(loading) {
+  if (loading) {
+    document.getElementById('session-list').innerHTML =
+      '<div class="text-gray-400 text-sm text-center py-8"><span class="spinner border-gray-300"></span><span class="ml-2">Loading sessions...</span></div>';
+  }
+}
+
+// ==================== GENERATE LINK ====================
+function handleGenerateLink() {
+  var btn = document.getElementById('generate-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating...';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.disabled = false;
+      btn.textContent = '＋ Generate Link';
+      if (result.success) {
+        showLinkPanel(result.sid, result.url);
+      } else {
+        showAlert(result.error || 'Failed to generate link.');
+      }
+    })
+    .withFailureHandler(function() {
+      btn.disabled = false;
+      btn.textContent = '＋ Generate Link';
+      showAlert('Connection error. Please try again.');
+    })
+    .adminGenerateLink(adminState.key, adminState.currentPid);
+}
+
+function showLinkPanel(sid, url) {
+  document.getElementById('link-sid').textContent = 'SID: ' + sid;
+  document.getElementById('link-url').value = url;
+  document.getElementById('copy-btn').textContent = '📋 Copy';
+  document.getElementById('link-panel').classList.remove('hidden');
+  // Reload sessions to show the newly referenced SID (it won't appear until first auth, so list may not change yet)
+  loadSessions();
+}
+
+function handleCopyLink() {
+  var url = document.getElementById('link-url').value;
+  var btn = document.getElementById('copy-btn');
+
+  // Try modern clipboard API first
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function() {
+      showCopied(btn);
+    }).catch(function() {
+      fallbackCopy(url, btn);
+    });
+  } else {
+    fallbackCopy(url, btn);
+  }
+}
+
+function fallbackCopy(text, btn) {
+  var el = document.getElementById('link-url');
+  el.focus();
+  el.select();
+  try {
+    document.execCommand('copy');
+    showCopied(btn);
+  } catch (e) {
+    showAlert('Could not copy automatically. Please select the URL above and copy manually.');
+  }
+}
+
+function showCopied(btn) {
+  btn.textContent = '✓ Copied!';
+  btn.classList.replace('bg-green-500', 'bg-green-700');
+  setTimeout(function() {
+    btn.textContent = '📋 Copy';
+    btn.classList.replace('bg-green-700', 'bg-green-500');
+  }, 2000);
+}
+
+// ==================== UI HELPERS ====================
+function showScreen(id) {
+  ['screen-login', 'screen-projects', 'screen-sessions'].forEach(function(s) {
+    document.getElementById(s).classList.add('hidden');
+  });
+  document.getElementById(id).classList.remove('hidden');
+}
+
+function showAlert(msg) {
+  document.getElementById('alert-message').textContent = msg;
+  document.getElementById('alert-overlay').classList.remove('hidden');
+}
+
+function closeAlert() {
+  document.getElementById('alert-overlay').classList.add('hidden');
+}
+
+function setError(elId, msg) {
+  document.getElementById(elId).textContent = msg;
+}
+
+function setBtnLoading(btnId, loading) {
+  var btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  if (loading) {
+    btn.dataset.origText = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span>';
+  } else {
+    btn.textContent = btn.dataset.origText || btn.textContent;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(str) {
+  return String(str || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+function formatDateTime(isoStr) {
+  try {
+    var d = new Date(isoStr);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch(e) { return isoStr || ''; }
+}
+</script>
+</body>
+</html>

@@ -1,5 +1,133 @@
 # Development Log — Anonymous Chat Tool
 
+## v1.1 — Consultant Dashboard (2026-04-09)
+
+### New Files
+- `admin.html` — Consultant Dashboard SPA (3 screens: Login, Project List, Session List)
+
+### Code.gs Additions
+- `doGet`: added `?mode=admin` routing branch
+- New public functions: `adminAuthenticate`, `adminListProjects`, `adminCreateProject`, `adminListSessions`, `adminGenerateLink`
+- New helper: `adminGuard_(adminKey)` — stateless admin auth on every privileged call
+- Script Property added: `ADMIN_KEY`
+
+### Data Architecture Change
+Global Config Sheet gains optional column E `Name`.
+`getProjectConfig_` is unchanged (reads columns 0–3 only). Zero regression on existing chat sessions.
+
+### Admin Flow Diagrams
+
+#### Page Load — Dashboard
+```
+Browser GET ?mode=admin
+  │
+  ▼
+doGet(e)
+  └── mode === 'admin' → serve admin.html
+        (no pid/sid validation, no project lookup)
+```
+
+#### Admin Authentication
+```
+Frontend: localStorage.getItem('consultant_auth')
+  │
+  ├── Key found → silent adminAuthenticate(key)
+  │     ├── PASS → show Project List
+  │     └── FAIL → clear localStorage, show Login screen
+  │
+  └── No key → show Login screen
+        │
+        └── User enters key → adminAuthenticate(key)
+              ├── PASS → localStorage.setItem + show Project List
+              └── FAIL → inline error, nothing stored
+```
+
+#### Create Project
+```
+Frontend: adminCreateProject(key, pid, name)
+  │
+  ▼
+adminGuard_(key) → verify ADMIN_KEY property
+  │
+  ├── FAIL → {error: 'Unauthorized'}
+  └── PASS
+        ├── Validate pid regex: /^[a-zA-Z0-9_-]{1,64}$/
+        ├── getProjectConfig_(pid) → duplicate check
+        ├── Acquire LockService
+        │     └── Re-check inside lock (double-check pattern)
+        ├── SpreadsheetApp.create('MasterSheet-{pid}') + set headers
+        ├── DriveApp.createFolder('ChatFolder-{pid}')
+        ├── masterFile.moveTo(folder)
+        ├── configSheet.appendRow([pid, masterSheetId, folderId, 'Active', name])
+        ├── CacheService.remove('config_' + pid)
+        └── Return {success: true}
+```
+
+#### Generate Link
+```
+Frontend: adminGenerateLink(key, pid)
+  │
+  ▼
+adminGuard_(key) → verify ADMIN_KEY
+getProjectConfig_(pid) → must be Active
+  │
+  └── sid = Utilities.getUuid()
+      base = ScriptApp.getService().getUrl()
+      url = base + '?pid=...&sid=...'
+      Return {success, url, sid}
+      (NO Master Sheet write — session created lazily on first authenticate())
+```
+
+### Security Model Addition
+
+```
+┌──────────────────────────────────────────────────┐
+│              ADMIN SECURITY LAYER                │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│  Admin key:  ADMIN_KEY Script Property           │
+│              Verified server-side on every call  │
+│              localStorage copy = convenience     │
+│              only, never trusted by server       │
+│                                                  │
+│  Responses:  pid, name, status, sid, lastUpdate  │
+│              only — no MasterSheetID, FolderID,  │
+│              or FileID sent to client            │
+│                                                  │
+│  ?mode=admin URL is not secret — key gate        │
+│  protects data. Only use on trusted devices.     │
+│                                                  │
+└──────────────────────────────────────────────────┘
+```
+
+### Updated File Map
+
+```
+AnonymousChatTool/
+├── Code.gs          Backend: doGet (+admin branch), chat functions, admin functions
+├── index.html       Participant chat UI (unchanged)
+├── admin.html       Consultant Dashboard — Login, Project List, Session List
+├── README.md        Setup and usage (updated with dashboard instructions)
+└── DEVELOPMENT.md   This file
+```
+
+### Testing Scenarios (v1.1 additions)
+
+| # | Scenario | Expected Result |
+|---|----------|-----------------|
+| 9 | Open `?mode=admin` | Dashboard login screen |
+| 10 | Enter wrong admin key | Inline error, no localStorage write |
+| 11 | Enter correct admin key | Project list loads |
+| 12 | Create project with duplicate pid | Error shown in modal, modal stays open |
+| 13 | Create project with invalid pid (spaces/special chars) | Client-side error before server call |
+| 14 | Generate link for active project | URL appears with correct pid/sid |
+| 15 | Open generated URL in browser | Chat auth screen with correct pid/sid |
+| 16 | Generate link for inactive project | Server returns error "Cannot generate link for an inactive project." |
+| 17 | Sign out | localStorage cleared, returns to login |
+| 18 | Dev vs prod deployment | Note: `ScriptApp.getService().getUrl()` returns the URL of the current deployment. Use production deployment URL for participant links. |
+
+---
+
 ## v1.0 — Initial Implementation (2026-04-09)
 
 ### Data Flow Diagrams

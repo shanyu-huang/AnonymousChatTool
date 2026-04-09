@@ -5,6 +5,15 @@
 // ==================== ENTRY POINTS ====================
 
 function doGet(e) {
+  var mode = (e && e.parameter && e.parameter.mode) || '';
+  if (mode === 'admin') {
+    var adminTemplate = HtmlService.createTemplateFromFile('admin');
+    return adminTemplate.evaluate()
+      .setTitle('Consultant Dashboard')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   var pid = (e && e.parameter && e.parameter.pid) || '';
   var sid = (e && e.parameter && e.parameter.sid) || '';
 
@@ -146,6 +155,184 @@ function fetchMessages(params) {
     return { success: true, messages: messages };
   } catch (err) {
     return { success: false, error: 'Fetch error: ' + err.message };
+  }
+}
+
+// ==================== ADMIN PUBLIC FUNCTIONS ====================
+
+/**
+ * Verify the admin key.
+ * @param {string} adminKey
+ * @returns {Object} {success, error?}
+ */
+function adminAuthenticate(adminKey) {
+  var guard = adminGuard_(adminKey);
+  if (!guard.ok) return { success: false, error: guard.error };
+  return { success: true };
+}
+
+/**
+ * List all projects from the Global Config Sheet.
+ * @param {string} adminKey
+ * @returns {Object} {success, projects: [{pid, name, status}], error?}
+ */
+function adminListProjects(adminKey) {
+  var guard = adminGuard_(adminKey);
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    var configSheetId = PropertiesService.getScriptProperties().getProperty('GLOBAL_CONFIG_SHEET_ID');
+    if (!configSheetId) return { success: false, error: 'Global Config Sheet not configured.' };
+
+    var ss = SpreadsheetApp.openById(configSheetId);
+    var sheet = ss.getSheets()[0];
+    var data = sheet.getDataRange().getValues();
+    var projects = [];
+
+    for (var i = 1; i < data.length; i++) { // Skip header
+      var pid = String(data[i][0]).trim();
+      if (!pid) continue;
+      var name = (data[i][4] && String(data[i][4]).trim()) ? String(data[i][4]).trim() : pid;
+      projects.push({
+        pid: pid,
+        name: name,
+        status: String(data[i][3])
+      });
+    }
+
+    projects.sort(function(a, b) { return a.pid.localeCompare(b.pid); });
+    return { success: true, projects: projects };
+  } catch (err) {
+    return { success: false, error: 'Failed to list projects: ' + err.message };
+  }
+}
+
+/**
+ * Create a new project: Master Sheet + Drive folder + Global Config row.
+ * @param {string} adminKey
+ * @param {string} pid
+ * @param {string} name  Optional display name.
+ * @returns {Object} {success, error?}
+ */
+function adminCreateProject(adminKey, pid, name) {
+  var guard = adminGuard_(adminKey);
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  pid = String(pid || '').trim();
+  name = String(name || '').trim();
+
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(pid)) {
+    return { success: false, error: 'Invalid Project ID. Use only letters, numbers, hyphens, and underscores (max 64 chars).' };
+  }
+
+  // Check for duplicate before acquiring lock
+  if (getProjectConfig_(pid)) {
+    return { success: false, error: 'Project ID "' + pid + '" already exists.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+
+    // Double-check inside lock
+    if (getProjectConfig_(pid)) {
+      lock.releaseLock();
+      return { success: false, error: 'Project ID "' + pid + '" already exists.' };
+    }
+
+    // Create Master Sheet
+    var masterSs = SpreadsheetApp.create('MasterSheet-' + pid);
+    var masterSheet = masterSs.getSheets()[0];
+    masterSheet.appendRow(['SID', 'Passcode', 'Client_ID', 'FileID', 'LastUpdate']);
+
+    // Create Drive folder
+    var folder = DriveApp.createFolder('ChatFolder-' + pid);
+
+    // Move master sheet into the folder
+    var masterFile = DriveApp.getFileById(masterSs.getId());
+    masterFile.moveTo(folder);
+
+    // Append to Global Config Sheet
+    var configSheetId = PropertiesService.getScriptProperties().getProperty('GLOBAL_CONFIG_SHEET_ID');
+    var configSs = SpreadsheetApp.openById(configSheetId);
+    var configSheet = configSs.getSheets()[0];
+    configSheet.appendRow([pid, masterSs.getId(), folder.getId(), 'Active', name]);
+
+    // Invalidate cache (defensive)
+    CacheService.getScriptCache().remove('config_' + pid);
+
+    lock.releaseLock();
+    return { success: true };
+  } catch (err) {
+    try { lock.releaseLock(); } catch (e) {}
+    return { success: false, error: 'Failed to create project: ' + err.message };
+  }
+}
+
+/**
+ * List sessions for a project (from Master Sheet only, no per-session file opens).
+ * @param {string} adminKey
+ * @param {string} pid
+ * @returns {Object} {success, sessions: [{sid, lastUpdate}], error?}
+ */
+function adminListSessions(adminKey, pid) {
+  var guard = adminGuard_(adminKey);
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    var config = getProjectConfig_(pid);
+    if (!config) return { success: false, error: 'Project not found.' };
+
+    var masterSs = SpreadsheetApp.openById(config.masterSheetId);
+    var masterSheet = masterSs.getSheets()[0];
+    var data = masterSheet.getDataRange().getValues();
+    var sessions = [];
+
+    for (var i = 1; i < data.length; i++) { // Skip header
+      var sid = String(data[i][0]).trim();
+      if (!sid) continue;
+      var lastUpdate = data[i][4];
+      if (typeof lastUpdate === 'object' && lastUpdate && lastUpdate.toISOString) {
+        lastUpdate = lastUpdate.toISOString();
+      } else {
+        lastUpdate = String(lastUpdate || '');
+      }
+      sessions.push({ sid: sid, lastUpdate: lastUpdate });
+    }
+
+    // Sort by lastUpdate descending (most recent first)
+    sessions.sort(function(a, b) {
+      return b.lastUpdate.localeCompare(a.lastUpdate);
+    });
+
+    return { success: true, sessions: sessions };
+  } catch (err) {
+    return { success: false, error: 'Failed to list sessions: ' + err.message };
+  }
+}
+
+/**
+ * Generate a new chat link for a project (UUID sid, no sheet write).
+ * @param {string} adminKey
+ * @param {string} pid
+ * @returns {Object} {success, url, sid, error?}
+ */
+function adminGenerateLink(adminKey, pid) {
+  var guard = adminGuard_(adminKey);
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    var config = getProjectConfig_(pid);
+    if (!config) return { success: false, error: 'Project not found.' };
+    if (config.status !== 'Active') return { success: false, error: 'Cannot generate link for an inactive project.' };
+
+    var sid = Utilities.getUuid();
+    var base = ScriptApp.getService().getUrl();
+    var url = base + '?pid=' + encodeURIComponent(pid) + '&sid=' + encodeURIComponent(sid);
+
+    return { success: true, sid: sid, url: url };
+  } catch (err) {
+    return { success: false, error: 'Failed to generate link: ' + err.message };
   }
 }
 
@@ -297,4 +484,16 @@ function sanitize_(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Shared admin authentication guard.
+ * @param {string} adminKey
+ * @returns {Object} {ok, error?}
+ */
+function adminGuard_(adminKey) {
+  var stored = PropertiesService.getScriptProperties().getProperty('ADMIN_KEY');
+  if (!stored) return { ok: false, error: 'Admin key not configured. Set ADMIN_KEY in Script Properties.' };
+  if (adminKey !== stored) return { ok: false, error: 'Unauthorized.' };
+  return { ok: true };
 }

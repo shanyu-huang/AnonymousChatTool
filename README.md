@@ -23,43 +23,39 @@ A lightweight anonymous chat system built on Google Apps Script + Google Sheets.
 
 1. Create a new Google Sheet.
 2. Name the first sheet tab "Config".
-3. Add headers in Row 1: `pid | MasterSheetID | FolderID | Status`
+3. Add headers in Row 1: `pid | MasterSheetID | FolderID | Status | Name`
 4. Copy the **Spreadsheet ID** from the URL (the long string between `/d/` and `/edit`).
 
-### 2. Create a Project
-
-For each research project:
-
-1. **Create a Master Sheet** — new Google Sheet with headers: `SID | Passcode | Client_ID | FileID | LastUpdate`
-2. **Create a Drive Folder** — this will hold individual session chat files.
-3. **Add a row** to the Global Config Sheet:
-
-| pid | MasterSheetID | FolderID | Status |
-|-----|---------------|----------|--------|
-| my-project | (Master Sheet ID) | (Folder ID) | Active |
-
-> **Folder ID**: Open the folder in Google Drive, copy the ID from the URL after `folders/`.
-
-### 3. Deploy the Apps Script
+### 2. Deploy the Apps Script
 
 1. Go to [script.google.com](https://script.google.com) → New Project.
 2. Replace `Code.gs` contents with the provided `Code.gs`.
 3. Create a new HTML file named `index` → paste the provided `index.html`.
-4. Set the Script Property:
-   - **File → Project settings → Script properties**
-   - Add: Key = `GLOBAL_CONFIG_SHEET_ID`, Value = (your Global Config Sheet ID)
-5. **Deploy → New deployment**:
+4. Create a new HTML file named `admin` → paste the provided `admin.html`.
+5. Set the Script Properties (**File → Project settings → Script properties**):
+   - `GLOBAL_CONFIG_SHEET_ID` → your Global Config Sheet ID
+   - `ADMIN_KEY` → a strong secret password for the Consultant Dashboard
+6. **Deploy → New deployment**:
    - Type: **Web app**
    - Execute as: **Me**
    - Who has access: **Anyone**
-6. Copy the deployment URL.
+7. Copy the deployment URL.
 
-### 4. Share Permissions
+### 3. Share Permissions
 
 The deployer's Google account needs:
 - **Edit access** to the Global Config Sheet.
-- **Edit access** to all Master Sheets.
-- **Edit access** to the Drive folders (or own them).
+- Projects created via the dashboard automatically grant access (they are created under the deployer's account).
+
+### 4. Create Projects (via Dashboard — recommended)
+
+Open `{deployment_url}?mode=admin` in your browser, sign in with your `ADMIN_KEY`, and use the **New Project** button. The dashboard automatically creates the Master Sheet and Drive folder — no manual steps needed.
+
+**Manual alternative** (if needed): Create a Master Sheet with headers `SID | Passcode | Client_ID | FileID | LastUpdate`, create a Drive folder, and add a row to the Global Config Sheet:
+
+| pid | MasterSheetID | FolderID | Status | Name |
+|-----|---------------|----------|--------|------|
+| my-project | (Master Sheet ID) | (Folder ID) | Active | My Research Project |
 
 ## Usage
 
@@ -78,12 +74,21 @@ https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec?pid=PROJECT_ID&sid=SESSI
 2. Chat interface appears. Messages poll every 5 seconds.
 3. The session is bound to this browser/device. Clearing localStorage or switching devices will lock you out.
 
+### Consultant Dashboard
+
+Open `{deployment_url}?mode=admin` and sign in with your `ADMIN_KEY`.
+
+| Feature | How |
+|---------|-----|
+| Create a project | Click **+ New Project**, fill in Project ID and optional display name |
+| View sessions | Click **View →** on a project row |
+| Generate participant link | Click **+ Generate Link** inside a project, copy the URL |
+
 ### Researcher Workflow
 
-1. Generate unique URLs for each participant (same `pid`, different `sid`).
-2. Share the URL via email/messaging.
-3. Open the same URL yourself (with a different `sid` or same `sid` with the consultant role).
-4. All chat data is stored in Google Sheets within the project's Drive folder.
+1. Open the dashboard → create a project → click **+ Generate Link** for each participant.
+2. Share the generated URL via email/messaging.
+3. All chat data is stored in Google Sheets within the project's Drive folder.
 
 ## Testing
 
