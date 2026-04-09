@@ -327,7 +327,13 @@ function adminGenerateLink(adminKey, pid) {
     if (config.status !== 'Active') return { success: false, error: 'Cannot generate link for an inactive project.' };
 
     var sid = Utilities.getUuid();
-    var base = ScriptApp.getService().getUrl();
+    var base = PropertiesService.getScriptProperties().getProperty('WEB_APP_URL')
+               || (ScriptApp.getService() && ScriptApp.getService().getUrl())
+               || '';
+    base = base.trim().replace(/[?#].*$/, ''); // strip any query string or hash
+    if (!base) {
+      return { success: false, error: '尚未設定部署網址。請至 Script Properties 新增 WEB_APP_URL，填入您的 /exec 部署網址後再試。' };
+    }
     var url = base + '?pid=' + encodeURIComponent(pid) + '&sid=' + encodeURIComponent(sid);
 
     return { success: true, sid: sid, url: url };

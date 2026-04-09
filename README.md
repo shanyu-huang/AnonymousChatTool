@@ -32,14 +32,15 @@ A lightweight anonymous chat system built on Google Apps Script + Google Sheets.
 2. Replace `Code.gs` contents with the provided `Code.gs`.
 3. Create a new HTML file named `index` → paste the provided `index.html`.
 4. Create a new HTML file named `admin` → paste the provided `admin.html`.
-5. Set the Script Properties (**File → Project settings → Script properties**):
-   - `GLOBAL_CONFIG_SHEET_ID` → your Global Config Sheet ID
-   - `ADMIN_KEY` → a strong secret password for the Consultant Dashboard
-6. **Deploy → New deployment**:
+5. **Deploy → New deployment**:
    - Type: **Web app**
    - Execute as: **Me**
    - Who has access: **Anyone**
-7. Copy the deployment URL.
+6. Copy the deployment URL (format: `https://script.google.com/macros/s/{ID}/exec`).
+7. Set the Script Properties (**File → Project settings → Script properties**):
+   - `GLOBAL_CONFIG_SHEET_ID` → your Global Config Sheet ID
+   - `ADMIN_KEY` → a strong secret password for the Consultant Dashboard
+   - `WEB_APP_URL` → the deployment URL copied in step 6 (the `/exec` URL)
 
 ### 3. Share Permissions
 
