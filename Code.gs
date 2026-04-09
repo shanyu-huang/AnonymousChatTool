@@ -327,9 +327,13 @@ function adminGenerateLink(adminKey, pid) {
     if (config.status !== 'Active') return { success: false, error: 'Cannot generate link for an inactive project.' };
 
     var sid = Utilities.getUuid();
-    var base = PropertiesService.getScriptProperties().getProperty('WEB_APP_URL')
-               || (ScriptApp.getService() && ScriptApp.getService().getUrl())
-               || '';
+    var base = PropertiesService.getScriptProperties().getProperty('WEB_APP_URL');
+    if (!base) {
+        base = (ScriptApp.getService() && ScriptApp.getService().getUrl()) || '';
+        if (base && base.endsWith('/dev')) {
+            return { success: false, error: '尚未設定部署網址 (WEB_APP_URL)。請至 Script Properties 新增 WEB_APP_URL，並填入您以 "/exec" 結尾的部署網址後再試。目前系統偵測到您正在使用 "/dev" 開發網址，該網址無法供外部參與者使用。' };
+        }
+    }
     base = base.trim().replace(/[?#].*$/, ''); // strip any query string or hash
     if (!base) {
       return { success: false, error: '尚未設定部署網址。請至 Script Properties 新增 WEB_APP_URL，填入您的 /exec 部署網址後再試。' };
