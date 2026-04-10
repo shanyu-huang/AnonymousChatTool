@@ -15,30 +15,36 @@ function doGet(e) {
   }
 
   var pid = (e && e.parameter && e.parameter.pid) || '';
-  var sid = (e && e.parameter && e.parameter.sid) || '';
+  var sid = (e && e.parameter && e.parameter.s) || '';
 
   if (!pid || !sid) {
     return HtmlService.createHtmlOutput(
-      '<h2>Missing parameters</h2><p>URL must include <code>?pid=...&sid=...</code></p>'
+      '<h2>Missing parameters</h2><p>URL must include <code>?pid=...&s=...</code></p>'
     );
   }
 
-  var config = getProjectConfig_(pid);
-  if (!config) {
-    return HtmlService.createHtmlOutput('<h2>Project not found</h2>');
-  }
-  if (config.status !== 'Active') {
-    return HtmlService.createHtmlOutput('<h2>Project is inactive</h2>');
-  }
+  try {
+    var config = getProjectConfig_(pid);
+    if (!config) {
+      return HtmlService.createHtmlOutput('<h2>Project not found</h2>');
+    }
+    if (config.status !== 'Active') {
+      return HtmlService.createHtmlOutput('<h2>Project is inactive</h2>');
+    }
 
-  var template = HtmlService.createTemplateFromFile('index');
-  template.pid = pid;
-  template.sid = sid;
+    var template = HtmlService.createTemplateFromFile('index');
+    template.pid = pid;
+    template.sid = sid;
 
-  return template.evaluate()
-    .setTitle('Anonymous Chat')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    return template.evaluate()
+      .setTitle('Anonymous Chat')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  } catch (err) {
+    return HtmlService.createHtmlOutput(
+      '<h2>Error</h2><p>' + err.message + '</p><p>Stack: ' + (err.stack || 'N/A') + '</p>'
+    );
+  }
 }
 
 // ==================== PUBLIC FUNCTIONS ====================
@@ -338,7 +344,7 @@ function adminGenerateLink(adminKey, pid) {
     if (!base) {
       return { success: false, error: '尚未設定部署網址。請至 Script Properties 新增 WEB_APP_URL，填入您的 /exec 部署網址後再試。' };
     }
-    var url = base + '?pid=' + encodeURIComponent(pid) + '&sid=' + encodeURIComponent(sid);
+    var url = base + '?pid=' + encodeURIComponent(pid) + '&s=' + encodeURIComponent(sid);
 
     return { success: true, sid: sid, url: url };
   } catch (err) {

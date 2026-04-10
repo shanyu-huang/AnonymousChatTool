@@ -63,7 +63,7 @@ Open `{deployment_url}?mode=admin` in your browser, sign in with your `ADMIN_KEY
 ### URL Format
 
 ```
-https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec?pid=PROJECT_ID&sid=SESSION_ID
+https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec?pid=PROJECT_ID&s=SESSION_ID
 ```
 
 - `pid` — Project ID (must match a row in Global Config).
@@ -93,7 +93,7 @@ Open `{deployment_url}?mode=admin` and sign in with your `ADMIN_KEY`.
 
 ## Testing
 
-1. **Normal window**: Open `?pid=test&sid=001`, enter passcode "abc123", select "consultant".
+1. **Normal window**: Open `?pid=test&s=001`, enter passcode "abc123", select "consultant".
 2. **Same window refresh**: Should auto-reconnect without re-entering passcode.
 3. **Incognito window**: Open the same URL, enter the same passcode "abc123" → should see **"Access Denied: Session locked to another device."** (different `client_id`).
 4. **XSS test**: Send `<script>alert(1)</script>` as a message → should render as plain text.

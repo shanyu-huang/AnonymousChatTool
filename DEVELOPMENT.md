@@ -73,7 +73,7 @@ getProjectConfig_(pid) → must be Active
   │
   └── sid = Utilities.getUuid()
       base = ScriptApp.getService().getUrl()
-      url = base + '?pid=...&sid=...'
+      url = base + '?pid=...&s=...'
       Return {success, url, sid}
       (NO Master Sheet write — session created lazily on first authenticate())
 ```
@@ -135,7 +135,7 @@ AnonymousChatTool/
 #### Page Load
 
 ```
-Browser GET ?pid=X&sid=Y
+Browser GET ?pid=X&s=Y
   │
   ▼
 doGet(e)
