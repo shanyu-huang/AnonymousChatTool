@@ -637,14 +637,24 @@ function handleAdminSend() {
   input.value = '';
   autoChatResize(input);
 
-  var tempMsg = { timestamp: new Date().toISOString(), role: 'consultant', content: content };
-  renderChatMessage(tempMsg, true);
-  scrollChatToBottom();
-
   google.script.run
     .withSuccessHandler(function(result) {
       chatIsSending = false;
-      if (!result.success) showAlert(result.error || 'Failed to send message.');
+      if (result.success) {
+        // Fetch immediately to show the sent message without waiting for polling
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (r.success && r.messages.length > 0) {
+              var shouldScroll = isChatNearBottom();
+              r.messages.forEach(function(m) { renderChatMessage(m, false); });
+              if (shouldScroll) scrollChatToBottom();
+            }
+          })
+          .withFailureHandler(function() {})
+          .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, chatLastTimestamp);
+      } else {
+        showAlert(result.error || 'Failed to send message.');
+      }
     })
     .withFailureHandler(function() {
       chatIsSending = false;
