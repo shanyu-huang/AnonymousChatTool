@@ -534,6 +534,7 @@ function showCopied(btn) {
 var chatPollingTimer = null;
 var chatLastTimestamp = '';
 var chatIsSending = false;
+var chatIsPolling = false;
 
 function openChat(sid, name) {
   stopChatPolling();
@@ -567,15 +568,20 @@ function loadChatMessages() {
 function startChatPolling() {
   stopChatPolling();
   chatPollingTimer = setInterval(function() {
+    if (chatIsPolling) return;
+    chatIsPolling = true;
     google.script.run
       .withSuccessHandler(function(result) {
+        chatIsPolling = false;
         if (result.success && result.messages.length > 0) {
           var shouldScroll = isChatNearBottom();
           result.messages.forEach(function(m) { renderChatMessage(m, false); });
           if (shouldScroll) scrollChatToBottom();
         }
       })
-      .withFailureHandler(function() {})
+      .withFailureHandler(function() {
+        chatIsPolling = false;
+      })
       .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, chatLastTimestamp);
   }, 5000);
 }
@@ -642,15 +648,20 @@ function handleAdminSend() {
       chatIsSending = false;
       if (result.success) {
         // Fetch immediately to show the sent message without waiting for polling
+        if (chatIsPolling) return;
+        chatIsPolling = true;
         google.script.run
           .withSuccessHandler(function(r) {
+            chatIsPolling = false;
             if (r.success && r.messages.length > 0) {
               var shouldScroll = isChatNearBottom();
               r.messages.forEach(function(m) { renderChatMessage(m, false); });
               if (shouldScroll) scrollChatToBottom();
             }
           })
-          .withFailureHandler(function() {})
+          .withFailureHandler(function() {
+            chatIsPolling = false;
+          })
           .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, chatLastTimestamp);
       } else {
         showAlert(result.error || 'Failed to send message.');
