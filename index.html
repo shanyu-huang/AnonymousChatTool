@@ -8,7 +8,7 @@
     body { overscroll-behavior: none; }
     #messages::-webkit-scrollbar { width: 4px; }
     #messages::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
-    .msg-bubble { max-width: 80%; word-wrap: break-word; }
+    .msg-bubble { max-width: 80vw; word-wrap: break-word; white-space: pre-wrap; }
     .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
@@ -18,12 +18,13 @@
   <!-- ==================== AUTH SCREEN ==================== -->
   <div id="auth-screen" class="flex flex-col items-center justify-center h-full p-6">
     <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
-      <h1 class="text-2xl font-bold text-center text-gray-800 mb-2">Anonymous Chat</h1>
+      <h1 class="text-2xl font-bold text-center text-gray-800 mb-2">匿名聊天室</h1>
       <p class="text-sm text-gray-500 text-center mb-6">Session: <strong id="auth-sid"></strong></p>
 
-      <label class="block text-sm font-medium text-gray-700 mb-1">Passcode</label>
+      <label class="block text-sm font-medium text-gray-700 mb-1">設定您的密碼</label>
+      <p class="text-xs text-gray-400 mb-2">請自行設定一組只有您知道的密碼。進入聊天室後，可將此密碼告知研究者，以確認您的身分。</p>
       <div class="relative mb-4">
-        <input id="passcode-input" type="password" placeholder="Enter passcode"
+        <input id="passcode-input" type="password" placeholder="自行輸入任意密碼"
           class="w-full border border-gray-300 rounded-lg px-4 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-green-400"
           onkeydown="if(event.key==='Enter') handleAuth()">
         <button type="button" onclick="toggleAuthPasscode()"
@@ -37,7 +38,7 @@
       </button>
 
       <p class="text-xs text-gray-400 mt-4 text-center leading-relaxed">
-        為了保護您的隱私，此對話將與您的裝置綁定。<br>
+        此對話將與您目前的裝置綁定。<br>
         請勿更換裝置或清除瀏覽器快取，以免失去存取權。
       </p>
     </div>

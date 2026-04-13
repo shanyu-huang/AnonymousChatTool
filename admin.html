@@ -552,8 +552,12 @@ function openChat(sid, name) {
 }
 
 function loadChatMessages() {
+  chatIsPolling = true;
+  console.log('[loadChatMessages] start, since: ""');
   google.script.run
     .withSuccessHandler(function(result) {
+      chatIsPolling = false;
+      console.log('[loadChatMessages] returned', result.success ? result.messages.length + ' msgs' : 'error: ' + result.error);
       if (result.success) {
         renderAllChatMessages(result.messages);
       } else {
@@ -561,7 +565,10 @@ function loadChatMessages() {
           '<div class="text-red-400 text-sm text-center py-8">' + escapeHtml(result.error) + '</div>';
       }
     })
-    .withFailureHandler(function() {})
+    .withFailureHandler(function() {
+      chatIsPolling = false;
+      console.log('[loadChatMessages] failure');
+    })
     .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, '');
 }
 
@@ -618,9 +625,11 @@ function renderChatMessage(msg, isOptimistic) {
   }
 
   var bubble = document.createElement('div');
-  bubble.className = 'max-w-xs rounded-2xl px-4 py-2 text-sm shadow-sm word-break ' +
+  bubble.className = 'rounded-2xl px-4 py-2 text-sm shadow-sm ' +
     (isOwn ? 'bg-green-500 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100');
+  bubble.style.maxWidth = '80vw';
   bubble.style.wordBreak = 'break-word';
+  bubble.style.whiteSpace = 'pre-wrap';
   bubble.textContent = msg.content;
 
   var time = document.createElement('div');
