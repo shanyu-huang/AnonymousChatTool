@@ -535,6 +535,8 @@ var chatPollingTimer = null;
 var chatLastTimestamp = '';
 var chatIsSending = false;
 var chatIsPolling = false;
+var chatRenderedTimestamps = new Set();
+var CHAT_POLL_INTERVAL = 2000;
 
 function openChat(sid, name) {
   stopChatPolling();
@@ -590,7 +592,7 @@ function startChatPolling() {
         chatIsPolling = false;
       })
       .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, chatLastTimestamp);
-  }, 5000);
+  }, CHAT_POLL_INTERVAL);
 }
 
 function stopChatPolling() {
@@ -601,13 +603,16 @@ function renderAllChatMessages(messages) {
   var container = document.getElementById('chat-messages');
   container.innerHTML = '';
   chatLastTimestamp = '';
+  chatRenderedTimestamps = new Set();
   messages.forEach(function(m) { renderChatMessage(m, false); });
   scrollChatToBottom();
 }
 
 function renderChatMessage(msg, isOptimistic) {
-  if (!isOptimistic && msg.timestamp && msg.timestamp > chatLastTimestamp) {
-    chatLastTimestamp = msg.timestamp;
+  if (!isOptimistic && msg.timestamp) {
+    if (chatRenderedTimestamps.has(msg.timestamp)) return; // dedup
+    chatRenderedTimestamps.add(msg.timestamp);
+    if (msg.timestamp > chatLastTimestamp) chatLastTimestamp = msg.timestamp;
   }
   var container = document.getElementById('chat-messages');
   var isOwn = msg.role === 'consultant';
@@ -652,26 +657,18 @@ function handleAdminSend() {
   input.value = '';
   autoChatResize(input);
 
+  // Optimistic render — shown instantly
+  var tempTs = '__pending__' + Date.now();
+  renderChatMessage({ timestamp: tempTs, role: 'consultant', content: content }, true);
+  scrollChatToBottom();
+
   google.script.run
     .withSuccessHandler(function(result) {
       chatIsSending = false;
       if (result.success) {
-        // Fetch immediately to show the sent message without waiting for polling
-        if (chatIsPolling) return;
-        chatIsPolling = true;
-        google.script.run
-          .withSuccessHandler(function(r) {
-            chatIsPolling = false;
-            if (r.success && r.messages.length > 0) {
-              var shouldScroll = isChatNearBottom();
-              r.messages.forEach(function(m) { renderChatMessage(m, false); });
-              if (shouldScroll) scrollChatToBottom();
-            }
-          })
-          .withFailureHandler(function() {
-            chatIsPolling = false;
-          })
-          .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, chatLastTimestamp);
+        // Mark server timestamp as rendered so polling skips it
+        chatRenderedTimestamps.add(result.timestamp);
+        if (result.timestamp > chatLastTimestamp) chatLastTimestamp = result.timestamp;
       } else {
         showAlert(result.error || 'Failed to send message.');
       }

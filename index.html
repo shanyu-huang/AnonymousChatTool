@@ -101,7 +101,7 @@
 const PID = '<?!= pid ?>';
 const SID = '<?!= sid ?>';
 const STORAGE_KEY = 'chat_' + PID + '_' + SID;
-const POLL_INTERVAL = 5000;
+const POLL_INTERVAL = 2000;
 
 // ==================== STATE ====================
 let state = null;
@@ -109,6 +109,7 @@ let pollingTimer = null;
 let lastTimestamp = '';
 let isSending = false;
 let isPolling = false;
+let renderedTimestamps = new Set();
 
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', init);
@@ -220,11 +221,18 @@ function handleSend() {
   input.value = '';
   autoResize(input);
 
+  // Optimistic render — shown instantly
+  var tempTs = '__pending__' + Date.now();
+  renderMessage({ timestamp: tempTs, role: state.role, content: content }, true);
+  scrollToBottom();
+
   google.script.run
     .withSuccessHandler(function(result) {
       isSending = false;
       if (result.success) {
-        fetchNewMessages(); // fetch immediately to show the sent message
+        // Mark the server timestamp as already rendered so polling skips it
+        renderedTimestamps.add(result.timestamp);
+        if (result.timestamp > lastTimestamp) lastTimestamp = result.timestamp;
       } else {
         showAlert(result.error || 'Failed to send message.');
       }
@@ -319,6 +327,7 @@ function renderAllMessages(messages) {
   var container = document.getElementById('messages');
   container.innerHTML = '';
   lastTimestamp = '';
+  renderedTimestamps = new Set();
   for (var i = 0; i < messages.length; i++) {
     renderMessage(messages[i], false);
   }
@@ -335,9 +344,9 @@ function renderNewMessages(messages) {
 
 function renderMessage(msg, isOptimistic) {
   if (!isOptimistic && msg.timestamp) {
-    if (msg.timestamp > lastTimestamp) {
-      lastTimestamp = msg.timestamp;
-    }
+    if (renderedTimestamps.has(msg.timestamp)) return; // skip dedup
+    renderedTimestamps.add(msg.timestamp);
+    if (msg.timestamp > lastTimestamp) lastTimestamp = msg.timestamp;
   }
 
   var container = document.getElementById('messages');
