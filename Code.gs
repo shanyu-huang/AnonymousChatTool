@@ -65,23 +65,29 @@ function authenticate(params) {
     var session = lookupSession_(masterSheet, params.sid);
 
     if (!session) {
-      // New session — register with lock to prevent race condition
+      return { success: false, error: 'Session not found. Please use a valid link.' };
+    }
+
+    if (session.passcode === '') {
+      // First authentication — set passcode, bind device, create session sheet
       var lock = LockService.getScriptLock();
       try {
         lock.waitLock(10000);
         // Re-check after acquiring lock
         session = lookupSession_(masterSheet, params.sid);
-        if (session) {
+        if (session.passcode !== '') {
           lock.releaseLock();
           return verifySession_(session, params);
         }
         var fileId = createSessionSheet_(config.folderId, params.pid, params.sid);
-        var hash = hashPasscode_(params.passcode);
         var now = new Date().toISOString();
-        masterSheet.appendRow([params.sid, hash, params.clientId, fileId, now]);
+        masterSheet.getRange(session.row, 2, 1, 4).setValues([[
+          params.passcode, params.clientId, fileId, now
+        ]]);
         lock.releaseLock();
         return { success: true, isNew: true };
       } catch (lockErr) {
+        try { lock.releaseLock(); } catch (e) {}
         return { success: false, error: 'Server busy. Please retry.' };
       }
     }
@@ -249,7 +255,7 @@ function adminCreateProject(adminKey, pid, name) {
     // Create Master Sheet
     var masterSs = SpreadsheetApp.create('MasterSheet-' + pid);
     var masterSheet = masterSs.getSheets()[0];
-    masterSheet.appendRow(['SID', 'Passcode', 'Client_ID', 'FileID', 'LastUpdate']);
+    masterSheet.appendRow(['SID', 'Passcode', 'Client_ID', 'FileID', 'LastUpdate', 'Name']);
 
     // Create Drive folder
     var folder = DriveApp.createFolder('ChatFolder-' + pid);
@@ -303,7 +309,12 @@ function adminListSessions(adminKey, pid) {
       } else {
         lastUpdate = String(lastUpdate || '');
       }
-      sessions.push({ sid: sid, lastUpdate: lastUpdate });
+      sessions.push({
+        sid: sid,
+        lastUpdate: lastUpdate,
+        name: String(data[i][5] || ''),
+        passcode: String(data[i][1] || '')
+      });
     }
 
     // Sort by lastUpdate descending (most recent first)
@@ -318,12 +329,13 @@ function adminListSessions(adminKey, pid) {
 }
 
 /**
- * Generate a new chat link for a project (UUID sid, no sheet write).
+ * Generate a new chat link for a project. Pre-creates a session row in Master Sheet.
  * @param {string} adminKey
  * @param {string} pid
- * @returns {Object} {success, url, sid, error?}
+ * @param {string} name  Optional participant label (e.g. "P01").
+ * @returns {Object} {success, url, sid, name, error?}
  */
-function adminGenerateLink(adminKey, pid) {
+function adminGenerateLink(adminKey, pid, name) {
   var guard = adminGuard_(adminKey);
   if (!guard.ok) return { success: false, error: guard.error };
 
@@ -332,6 +344,7 @@ function adminGenerateLink(adminKey, pid) {
     if (!config) return { success: false, error: 'Project not found.' };
     if (config.status !== 'Active') return { success: false, error: 'Cannot generate link for an inactive project.' };
 
+    name = String(name || '').trim();
     var sid = Utilities.getUuid();
     var base = PropertiesService.getScriptProperties().getProperty('WEB_APP_URL');
     if (!base) {
@@ -344,11 +357,103 @@ function adminGenerateLink(adminKey, pid) {
     if (!base) {
       return { success: false, error: '尚未設定部署網址。請至 Script Properties 新增 WEB_APP_URL，填入您的 /exec 部署網址後再試。' };
     }
-    var url = base + '?pid=' + encodeURIComponent(pid) + '&s=' + encodeURIComponent(sid);
 
-    return { success: true, sid: sid, url: url };
+    // Pre-create session row so participant can authenticate on first visit
+    var masterSs = SpreadsheetApp.openById(config.masterSheetId);
+    var masterSheet = masterSs.getSheets()[0];
+    masterSheet.appendRow([sid, '', '', '', new Date().toISOString(), name]);
+
+    var url = base + '?pid=' + encodeURIComponent(pid) + '&s=' + encodeURIComponent(sid);
+    return { success: true, sid: sid, url: url, name: name };
   } catch (err) {
     return { success: false, error: 'Failed to generate link: ' + err.message };
+  }
+}
+
+/**
+ * Fetch all messages for a session (admin view, no participant auth required).
+ * @param {string} adminKey
+ * @param {string} pid
+ * @param {string} sid
+ * @param {string} since  ISO timestamp — only return messages after this (optional).
+ * @returns {Object} {success, messages: [{timestamp, role, content}], error?}
+ */
+function adminFetchMessages(adminKey, pid, sid, since) {
+  var guard = adminGuard_(adminKey);
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    var config = getProjectConfig_(pid);
+    if (!config) return { success: false, error: 'Project not found.' };
+
+    var masterSs = SpreadsheetApp.openById(config.masterSheetId);
+    var masterSheet = masterSs.getSheets()[0];
+    var session = lookupSession_(masterSheet, sid);
+
+    if (!session) return { success: false, error: 'Session not found.' };
+    if (!session.fileId) return { success: true, messages: [] }; // not yet activated by participant
+
+    var ss = SpreadsheetApp.openById(session.fileId);
+    var sheet = ss.getSheets()[0];
+    var data = sheet.getDataRange().getValues();
+    var messages = [];
+    var sinceStr = since || '';
+
+    for (var i = 1; i < data.length; i++) { // skip header
+      var ts = data[i][0];
+      if (typeof ts === 'object' && ts.toISOString) {
+        ts = ts.toISOString();
+      } else {
+        ts = String(ts);
+      }
+      if (!sinceStr || ts > sinceStr) {
+        messages.push({ timestamp: ts, role: String(data[i][1]), content: String(data[i][2]) });
+      }
+    }
+
+    return { success: true, messages: messages };
+  } catch (err) {
+    return { success: false, error: 'Fetch error: ' + err.message };
+  }
+}
+
+/**
+ * Send a message as consultant into a participant's session.
+ * @param {string} adminKey
+ * @param {string} pid
+ * @param {string} sid
+ * @param {string} content
+ * @returns {Object} {success, timestamp?, error?}
+ */
+function adminSendMessage(adminKey, pid, sid, content) {
+  var guard = adminGuard_(adminKey);
+  if (!guard.ok) return { success: false, error: guard.error };
+
+  try {
+    var config = getProjectConfig_(pid);
+    if (!config) return { success: false, error: 'Project not found.' };
+    if (config.status !== 'Active') return { success: false, error: 'Project is inactive.' };
+
+    var masterSs = SpreadsheetApp.openById(config.masterSheetId);
+    var masterSheet = masterSs.getSheets()[0];
+    var session = lookupSession_(masterSheet, sid);
+
+    if (!session) return { success: false, error: 'Session not found.' };
+    if (!session.fileId) return { success: false, error: 'Session not yet activated by participant.' };
+
+    var sanitized = sanitize_(content || '');
+    if (!sanitized) return { success: false, error: 'Message is empty.' };
+
+    var ss = SpreadsheetApp.openById(session.fileId);
+    var sheet = ss.getSheets()[0];
+    var now = new Date().toISOString();
+    sheet.appendRow([now, 'consultant', sanitized]);
+
+    masterSheet.getRange(session.row, 5).setValue(now);
+
+    return { success: true, timestamp: now };
+  } catch (err) {
+    return { success: false, error: 'Send error: ' + err.message };
   }
 }
 
@@ -358,8 +463,7 @@ function adminGenerateLink(adminKey, pid) {
  * Verify an existing session's passcode and clientId.
  */
 function verifySession_(session, params) {
-  var hash = hashPasscode_(params.passcode);
-  if (hash !== session.passcodeHash) {
+  if (params.passcode !== session.passcode) {
     return { success: false, error: 'Invalid passcode.' };
   }
   if (params.clientId !== session.clientId) {
@@ -383,8 +487,7 @@ function authGuard_(params) {
 
   if (!session) return { authorized: false, error: 'Session not found. Please authenticate first.' };
 
-  var hash = hashPasscode_(params.passcode);
-  if (hash !== session.passcodeHash) {
+  if (params.passcode !== session.passcode) {
     return { authorized: false, error: 'Invalid passcode.' };
   }
   if (params.clientId !== session.clientId) {
@@ -433,7 +536,7 @@ function getProjectConfig_(pid) {
  * Look up a session row in the Master Sheet.
  * @param {Sheet} masterSheet
  * @param {string} sid
- * @returns {Object|null} {row, passcodeHash, clientId, fileId}
+ * @returns {Object|null} {row, passcode, clientId, fileId, name}
  */
 function lookupSession_(masterSheet, sid) {
   var data = masterSheet.getDataRange().getValues();
@@ -441,9 +544,10 @@ function lookupSession_(masterSheet, sid) {
     if (String(data[i][0]) === sid) {
       return {
         row: i + 1, // 1-based sheet row
-        passcodeHash: String(data[i][1]),
+        passcode: String(data[i][1]),
         clientId: String(data[i][2]),
-        fileId: String(data[i][3])
+        fileId: String(data[i][3]),
+        name: String(data[i][5] || '')
       };
     }
   }
@@ -469,21 +573,6 @@ function createSessionSheet_(folderId, pid, sid) {
   file.moveTo(folder);
 
   return ss.getId();
-}
-
-/**
- * SHA-256 hash a passcode string.
- * @param {string} passcode
- * @returns {string} Hex-encoded hash.
- */
-function hashPasscode_(passcode) {
-  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, passcode);
-  var hex = '';
-  for (var i = 0; i < raw.length; i++) {
-    var b = (raw[i] + 256) % 256; // Convert signed byte to unsigned
-    hex += ('0' + b.toString(16)).slice(-2);
-  }
-  return hex;
 }
 
 /**

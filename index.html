@@ -23,18 +23,12 @@
 
       <label class="block text-sm font-medium text-gray-700 mb-1">Passcode</label>
       <input id="passcode-input" type="password" placeholder="Enter passcode"
-        class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-green-400">
-
-      <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
-      <select id="role-select"
-        class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-green-400">
-        <option value="consultant">Consultant (研究者)</option>
-        <option value="client">Client (受訪者)</option>
-      </select>
+        class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-green-400"
+        onkeydown="if(event.key==='Enter') handleAuth()">
 
       <button id="auth-btn" onclick="handleAuth()"
         class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg transition">
-        Enter Chat
+        進入聊天室
       </button>
 
       <p class="text-xs text-gray-400 mt-4 text-center leading-relaxed">
@@ -52,7 +46,12 @@
         <span class="font-semibold">Anonymous Chat</span>
         <span class="text-green-100 text-sm ml-2" id="display-sid"></span>
       </div>
-      <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-green-300" title="Connected"></div>
+      <div class="flex items-center gap-2">
+        <button onclick="togglePasscode()" id="passcode-btn"
+          class="text-green-100 hover:text-white text-xs px-2 py-1 rounded transition" title="顯示/隱藏密碼">🔑</button>
+        <span id="passcode-display" class="hidden text-xs text-green-100 font-mono bg-green-600 px-2 py-0.5 rounded"></span>
+        <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-green-300" title="Connected"></div>
+      </div>
     </div>
 
     <!-- Messages -->
@@ -147,8 +146,8 @@ function loadState() {
   } catch (e) { return null; }
 }
 
-function saveState(passcode, clientId, role) {
-  state = { passcode: passcode, clientId: clientId, role: role };
+function saveState(passcode, clientId) {
+  state = { passcode: passcode, clientId: clientId, role: 'client' };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
@@ -166,7 +165,6 @@ function generateClientId() {
 // ==================== AUTH ====================
 function handleAuth() {
   var passcode = document.getElementById('passcode-input').value.trim();
-  var role = document.getElementById('role-select').value;
 
   if (!passcode) {
     showAlert('Please enter a passcode.');
@@ -181,9 +179,9 @@ function handleAuth() {
   google.script.run
     .withSuccessHandler(function(result) {
       btn.disabled = false;
-      btn.textContent = 'Enter Chat';
+      btn.textContent = '進入聊天室';
       if (result.success) {
-        saveState(passcode, clientId, role);
+        saveState(passcode, clientId);
         enterChat();
       } else {
         showAlert(result.error || 'Authentication failed.');
@@ -191,7 +189,7 @@ function handleAuth() {
     })
     .withFailureHandler(function(err) {
       btn.disabled = false;
-      btn.textContent = 'Enter Chat';
+      btn.textContent = '進入聊天室';
       showAlert('Connection error. Please try again.');
     })
     .authenticate({ pid: PID, sid: SID, passcode: passcode, clientId: clientId });
@@ -414,6 +412,16 @@ function scrollToBottom() {
 function isNearBottom() {
   var el = document.getElementById('messages');
   return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+}
+
+function togglePasscode() {
+  var display = document.getElementById('passcode-display');
+  if (display.classList.contains('hidden')) {
+    display.textContent = state ? state.passcode : '';
+    display.classList.remove('hidden');
+  } else {
+    display.classList.add('hidden');
+  }
 }
 </script>
 </body>

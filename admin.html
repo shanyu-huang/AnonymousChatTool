@@ -118,10 +118,13 @@
     <div class="max-w-2xl mx-auto px-4 py-6">
       <!-- Generate link section -->
       <div class="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-semibold text-gray-700">New Participant Link</h3>
+        <h3 class="text-sm font-semibold text-gray-700 mb-2">New Participant Link</h3>
+        <div class="flex gap-2 mb-2">
+          <input id="session-name-input" type="text" placeholder="受訪者標籤（如：P01）"
+            class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            onkeydown="if(event.key==='Enter') handleGenerateLink()">
           <button id="generate-btn" onclick="handleGenerateLink()"
-            class="bg-green-500 hover:bg-green-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition">
+            class="bg-green-500 hover:bg-green-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition whitespace-nowrap">
             ＋ Generate Link
           </button>
         </div>
@@ -159,6 +162,38 @@
     </div>
   </div>
 
+  <!-- ==================== SCREEN: CHAT ==================== -->
+  <div id="screen-chat" class="hidden flex flex-col h-screen">
+    <!-- Header -->
+    <div class="bg-green-500 text-white px-4 py-3 flex items-center justify-between shadow-sm flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <button onclick="showSessions(adminState.currentPid, adminState.currentName)"
+          class="text-green-100 hover:text-white text-sm transition">← Back</button>
+        <div>
+          <span id="chat-session-name" class="font-semibold text-sm"></span>
+          <span id="chat-session-sid" class="text-green-100 text-xs ml-2 font-mono"></span>
+        </div>
+      </div>
+      <div id="chat-status-dot" class="w-2.5 h-2.5 rounded-full bg-green-300" title="Connected"></div>
+    </div>
+
+    <!-- Messages -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-gray-50">
+      <div class="text-gray-400 text-sm text-center py-8">Loading messages...</div>
+    </div>
+
+    <!-- Input bar -->
+    <div class="bg-white border-t border-gray-200 px-3 py-2 flex gap-2 items-end flex-shrink-0">
+      <textarea id="chat-input" rows="1" placeholder="Type a message..."
+        class="flex-1 border border-gray-300 rounded-2xl px-4 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-green-400 text-sm"
+        onkeydown="handleChatKey(event)" oninput="autoChatResize(this)"></textarea>
+      <button onclick="handleAdminSend()"
+        class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-2xl transition flex-shrink-0 text-sm font-medium">
+        Send
+      </button>
+    </div>
+  </div>
+
   <!-- ==================== ALERT OVERLAY ==================== -->
   <div id="alert-overlay" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
     <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
@@ -176,6 +211,8 @@ const adminState = {
   key: null,
   currentPid: null,
   currentName: null,
+  currentSid: null,
+  currentSessionName: null,
   projects: [],
 };
 
@@ -383,14 +420,27 @@ function renderSessionList(sessions) {
   }
   container.innerHTML = '';
   sessions.forEach(function(s) {
-    var shortSid = s.sid.length > 8 ? s.sid.substring(0, 8) + '…' : s.sid;
+    var label = s.name || s.sid.substring(0, 8) + '…';
     var lastActive = s.lastUpdate ? formatDateTime(s.lastUpdate) : '—';
+    var activated = !!s.passcode;
     var row = document.createElement('div');
     row.className = 'bg-white border border-gray-200 rounded-xl px-4 py-3 fade-in';
     row.innerHTML =
-      '<div class="flex items-center justify-between">' +
-        '<p class="font-mono text-sm text-gray-700 truncate">' + escapeHtml(shortSid) + '</p>' +
-        '<span class="text-xs text-gray-400 flex-shrink-0 ml-2">Last active: ' + escapeHtml(lastActive) + '</span>' +
+      '<div class="flex items-center justify-between gap-2">' +
+        '<div class="min-w-0 flex-1">' +
+          '<p class="font-medium text-sm text-gray-800 truncate">' + escapeHtml(label) + '</p>' +
+          '<div class="flex items-center gap-2 mt-0.5">' +
+            (activated
+              ? '<span class="text-xs text-gray-500">密碼: <span class="font-mono">' + escapeHtml(s.passcode) + '</span></span>'
+              : '<span class="text-xs text-gray-400 italic">尚未登入</span>') +
+            '<span class="text-xs text-gray-300">·</span>' +
+            '<span class="text-xs text-gray-400">Last active: ' + escapeHtml(lastActive) + '</span>' +
+          '</div>' +
+        '</div>' +
+        (activated
+          ? '<button onclick="openChat(\'' + escapeAttr(s.sid) + '\', \'' + escapeAttr(s.name || label) + '\')" ' +
+              'class="flex-shrink-0 text-sm text-green-600 hover:text-green-700 font-medium transition">進入聊天室 →</button>'
+          : '<span class="flex-shrink-0 text-xs text-gray-300">待啟用</span>') +
       '</div>';
     container.appendChild(row);
   });
@@ -410,6 +460,7 @@ function setSessionListLoading(loading) {
 
 // ==================== GENERATE LINK ====================
 function handleGenerateLink() {
+  var name = document.getElementById('session-name-input').value.trim();
   var btn = document.getElementById('generate-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Generating...';
@@ -419,7 +470,9 @@ function handleGenerateLink() {
       btn.disabled = false;
       btn.textContent = '＋ Generate Link';
       if (result.success) {
-        showLinkPanel(result.sid, result.url);
+        showLinkPanel(result.sid, result.url, result.name);
+        document.getElementById('session-name-input').value = '';
+        loadSessions();
       } else {
         showAlert(result.error || 'Failed to generate link.');
       }
@@ -429,16 +482,15 @@ function handleGenerateLink() {
       btn.textContent = '＋ Generate Link';
       showAlert('Connection error. Please try again.');
     })
-    .adminGenerateLink(adminState.key, adminState.currentPid);
+    .adminGenerateLink(adminState.key, adminState.currentPid, name);
 }
 
-function showLinkPanel(sid, url) {
-  document.getElementById('link-sid').textContent = 'SID: ' + sid;
+function showLinkPanel(sid, url, name) {
+  var label = name ? name + ' — ' + sid : sid;
+  document.getElementById('link-sid').textContent = 'SID: ' + label;
   document.getElementById('link-url').value = url;
   document.getElementById('copy-btn').textContent = '📋 Copy';
   document.getElementById('link-panel').classList.remove('hidden');
-  // Reload sessions to show the newly referenced SID (it won't appear until first auth, so list may not change yet)
-  loadSessions();
 }
 
 function handleCopyLink() {
@@ -478,12 +530,162 @@ function showCopied(btn) {
   }, 2000);
 }
 
+// ==================== CHAT ====================
+var chatPollingTimer = null;
+var chatLastTimestamp = '';
+var chatIsSending = false;
+
+function openChat(sid, name) {
+  stopChatPolling();
+  adminState.currentSid = sid;
+  adminState.currentSessionName = name;
+  chatLastTimestamp = '';
+  document.getElementById('chat-session-name').textContent = name || sid;
+  document.getElementById('chat-session-sid').textContent = sid.substring(0, 8) + '…';
+  document.getElementById('chat-messages').innerHTML =
+    '<div class="text-gray-400 text-sm text-center py-8">Loading messages...</div>';
+  showScreen('screen-chat');
+  loadChatMessages();
+  startChatPolling();
+  setTimeout(function() { document.getElementById('chat-input').focus(); }, 100);
+}
+
+function loadChatMessages() {
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        renderAllChatMessages(result.messages);
+      } else {
+        document.getElementById('chat-messages').innerHTML =
+          '<div class="text-red-400 text-sm text-center py-8">' + escapeHtml(result.error) + '</div>';
+      }
+    })
+    .withFailureHandler(function() {})
+    .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, '');
+}
+
+function startChatPolling() {
+  stopChatPolling();
+  chatPollingTimer = setInterval(function() {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.success && result.messages.length > 0) {
+          var shouldScroll = isChatNearBottom();
+          result.messages.forEach(function(m) { renderChatMessage(m, false); });
+          if (shouldScroll) scrollChatToBottom();
+        }
+      })
+      .withFailureHandler(function() {})
+      .adminFetchMessages(adminState.key, adminState.currentPid, adminState.currentSid, chatLastTimestamp);
+  }, 5000);
+}
+
+function stopChatPolling() {
+  if (chatPollingTimer) { clearInterval(chatPollingTimer); chatPollingTimer = null; }
+}
+
+function renderAllChatMessages(messages) {
+  var container = document.getElementById('chat-messages');
+  container.innerHTML = '';
+  chatLastTimestamp = '';
+  messages.forEach(function(m) { renderChatMessage(m, false); });
+  scrollChatToBottom();
+}
+
+function renderChatMessage(msg, isOptimistic) {
+  if (!isOptimistic && msg.timestamp && msg.timestamp > chatLastTimestamp) {
+    chatLastTimestamp = msg.timestamp;
+  }
+  var container = document.getElementById('chat-messages');
+  var isOwn = msg.role === 'consultant';
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'flex ' + (isOwn ? 'justify-end' : 'justify-start');
+
+  var inner = document.createElement('div');
+
+  if (!isOwn) {
+    var roleTag = document.createElement('div');
+    roleTag.className = 'text-xs text-gray-400 mb-0.5 ml-1';
+    roleTag.textContent = msg.role;
+    inner.appendChild(roleTag);
+  }
+
+  var bubble = document.createElement('div');
+  bubble.className = 'max-w-xs rounded-2xl px-4 py-2 text-sm shadow-sm word-break ' +
+    (isOwn ? 'bg-green-500 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100');
+  bubble.style.wordBreak = 'break-word';
+  bubble.textContent = msg.content;
+
+  var time = document.createElement('div');
+  time.className = 'text-xs mt-0.5 ' + (isOwn ? 'text-right text-green-100' : 'text-left text-gray-400');
+  time.textContent = formatTime(msg.timestamp);
+
+  inner.appendChild(bubble);
+  inner.appendChild(time);
+  wrapper.appendChild(inner);
+  container.appendChild(wrapper);
+}
+
+function handleAdminSend() {
+  if (chatIsSending) return;
+  var input = document.getElementById('chat-input');
+  var content = input.value.trim();
+  if (!content) return;
+
+  chatIsSending = true;
+  input.value = '';
+  autoChatResize(input);
+
+  var tempMsg = { timestamp: new Date().toISOString(), role: 'consultant', content: content };
+  renderChatMessage(tempMsg, true);
+  scrollChatToBottom();
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      chatIsSending = false;
+      if (!result.success) showAlert(result.error || 'Failed to send message.');
+    })
+    .withFailureHandler(function() {
+      chatIsSending = false;
+      showAlert('Failed to send. Please try again.');
+    })
+    .adminSendMessage(adminState.key, adminState.currentPid, adminState.currentSid, content);
+}
+
+function handleChatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAdminSend(); }
+}
+
+function autoChatResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function scrollChatToBottom() {
+  var el = document.getElementById('chat-messages');
+  setTimeout(function() { el.scrollTop = el.scrollHeight; }, 50);
+}
+
+function isChatNearBottom() {
+  var el = document.getElementById('chat-messages');
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+}
+
+function formatTime(isoStr) {
+  try {
+    var d = new Date(isoStr);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch(e) { return ''; }
+}
+
 // ==================== UI HELPERS ====================
 function showScreen(id) {
-  ['screen-login', 'screen-projects', 'screen-sessions'].forEach(function(s) {
+  ['screen-login', 'screen-projects', 'screen-sessions', 'screen-chat'].forEach(function(s) {
     document.getElementById(s).classList.add('hidden');
   });
   document.getElementById(id).classList.remove('hidden');
+  if (id !== 'screen-chat') stopChatPolling();
 }
 
 function showAlert(msg) {
