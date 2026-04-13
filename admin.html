@@ -163,9 +163,9 @@
   </div>
 
   <!-- ==================== SCREEN: CHAT ==================== -->
-  <div id="screen-chat" class="hidden flex flex-col h-screen">
+  <div id="screen-chat" class="hidden flex flex-col" style="height:100dvh;height:-webkit-fill-available">
     <!-- Header -->
-    <div class="bg-green-500 text-white px-4 py-3 flex items-center justify-between shadow-sm flex-shrink-0">
+    <div class="bg-green-500 text-white px-4 py-3 flex items-center justify-between shadow-sm flex-shrink-0 sticky top-0 z-10">
       <div class="flex items-center gap-3">
         <button onclick="showSessions(adminState.currentPid, adminState.currentName)"
           class="text-green-100 hover:text-white text-sm transition">← Back</button>
@@ -537,7 +537,7 @@ var chatSendQueue = [];
 var chatIsSending = false;
 var chatIsPolling = false;
 var chatRenderedTimestamps = new Set();
-var CHAT_POLL_INTERVAL = 2000;
+var CHAT_POLL_INTERVAL = 1000;
 
 function openChat(sid, name) {
   stopChatPolling();
@@ -655,6 +655,7 @@ function handleAdminSend() {
 
   input.value = '';
   autoChatResize(input);
+  input.focus(); // keep keyboard open on mobile
 
   // Optimistic render — shown instantly
   var tempTs = '__pending__' + Date.now();

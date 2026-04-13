@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { overscroll-behavior: none; }
+    body { overscroll-behavior: none; height: 100dvh; height: -webkit-fill-available; }
+    #chat-screen { height: 100dvh; height: -webkit-fill-available; }
     #messages::-webkit-scrollbar { width: 4px; }
     #messages::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
     .msg-bubble { max-width: 80vw; word-wrap: break-word; white-space: pre-wrap; }
@@ -45,9 +46,9 @@
   </div>
 
   <!-- ==================== CHAT SCREEN ==================== -->
-  <div id="chat-screen" class="hidden flex flex-col h-full">
+  <div id="chat-screen" class="hidden flex flex-col">
     <!-- Header -->
-    <div class="bg-green-500 text-white px-4 py-3 flex items-center justify-between shadow-sm flex-shrink-0">
+    <div class="bg-green-500 text-white px-4 py-3 flex items-center justify-between shadow-sm flex-shrink-0 sticky top-0 z-10">
       <div>
         <span class="font-semibold">Anonymous Chat</span>
         <span class="text-green-100 text-sm ml-2" id="display-sid"></span>
@@ -101,7 +102,7 @@
 const PID = '<?!= pid ?>';
 const SID = '<?!= sid ?>';
 const STORAGE_KEY = 'chat_' + PID + '_' + SID;
-const POLL_INTERVAL = 2000;
+const POLL_INTERVAL = 1000;
 
 // ==================== STATE ====================
 let state = null;
@@ -219,6 +220,7 @@ function handleSend() {
 
   input.value = '';
   autoResize(input);
+  input.focus(); // keep keyboard open on mobile
 
   // Optimistic render — shown instantly
   var tempTs = '__pending__' + Date.now();
