@@ -533,6 +533,7 @@ function showCopied(btn) {
 // ==================== CHAT ====================
 var chatPollingTimer = null;
 var chatLastTimestamp = '';
+var chatSendQueue = [];
 var chatIsSending = false;
 var chatIsPolling = false;
 var chatRenderedTimestamps = new Set();
@@ -648,12 +649,10 @@ function renderChatMessage(msg, isOptimistic) {
 }
 
 function handleAdminSend() {
-  if (chatIsSending) return;
   var input = document.getElementById('chat-input');
   var content = input.value.trim();
   if (!content) return;
 
-  chatIsSending = true;
   input.value = '';
   autoChatResize(input);
 
@@ -662,20 +661,30 @@ function handleAdminSend() {
   renderChatMessage({ timestamp: tempTs, role: 'consultant', content: content }, true);
   scrollChatToBottom();
 
+  chatSendQueue.push(content);
+  processChatSendQueue();
+}
+
+function processChatSendQueue() {
+  if (chatIsSending || chatSendQueue.length === 0) return;
+  chatIsSending = true;
+  var content = chatSendQueue.shift();
+
   google.script.run
     .withSuccessHandler(function(result) {
       chatIsSending = false;
       if (result.success) {
-        // Mark server timestamp as rendered so polling skips it
         chatRenderedTimestamps.add(result.timestamp);
         if (result.timestamp > chatLastTimestamp) chatLastTimestamp = result.timestamp;
       } else {
         showAlert(result.error || 'Failed to send message.');
       }
+      processChatSendQueue();
     })
     .withFailureHandler(function() {
       chatIsSending = false;
       showAlert('Failed to send. Please try again.');
+      processChatSendQueue();
     })
     .adminSendMessage(adminState.key, adminState.currentPid, adminState.currentSid, content);
 }

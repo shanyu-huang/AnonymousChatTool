@@ -107,6 +107,7 @@ const POLL_INTERVAL = 2000;
 let state = null;
 let pollingTimer = null;
 let lastTimestamp = '';
+let sendQueue = [];
 let isSending = false;
 let isPolling = false;
 let renderedTimestamps = new Set();
@@ -212,12 +213,10 @@ function enterChat() {
 
 // ==================== MESSAGING ====================
 function handleSend() {
-  if (isSending) return;
   var input = document.getElementById('msg-input');
   var content = input.value.trim();
   if (!content || !state) return;
 
-  isSending = true;
   input.value = '';
   autoResize(input);
 
@@ -226,20 +225,30 @@ function handleSend() {
   renderMessage({ timestamp: tempTs, role: state.role, content: content }, true);
   scrollToBottom();
 
+  sendQueue.push(content);
+  processSendQueue();
+}
+
+function processSendQueue() {
+  if (isSending || sendQueue.length === 0) return;
+  isSending = true;
+  var content = sendQueue.shift();
+
   google.script.run
     .withSuccessHandler(function(result) {
       isSending = false;
       if (result.success) {
-        // Mark the server timestamp as already rendered so polling skips it
         renderedTimestamps.add(result.timestamp);
         if (result.timestamp > lastTimestamp) lastTimestamp = result.timestamp;
       } else {
         showAlert(result.error || 'Failed to send message.');
       }
+      processSendQueue();
     })
     .withFailureHandler(function() {
       isSending = false;
       showAlert('Failed to send. Please try again.');
+      processSendQueue();
     })
     .sendMessage({
       pid: PID, sid: SID,
